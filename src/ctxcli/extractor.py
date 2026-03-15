@@ -62,6 +62,7 @@ class ConventionProfile:
     import_style: str = "unknown"        # relative | absolute | mixed
     has_docker: bool = False
     has_ci: bool = False
+    has_action_yml: bool = False   # action.yml at repo root (GitHub Action entrypoint)
     file_count: int = 0
     line_count: int = 0
     scanned_files: list = field(default_factory=list)   # Path objects of files read
@@ -82,6 +83,11 @@ class ConventionExtractor:
             (self.root / ".github" / "workflows").is_dir()
             or (self.root / ".gitlab-ci.yml").exists()
         )
+        profile.has_action_yml = (self.root / "action.yml").exists()
+
+        # pytest.ini at root → test framework is pytest (before file walking)
+        if (self.root / "pytest.ini").exists():
+            profile.test_framework = "pytest"
 
         # Top-level visible directories → folder_structure
         try:

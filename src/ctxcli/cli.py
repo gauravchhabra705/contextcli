@@ -168,5 +168,75 @@ def update(
     )
 
 
+@app.command()
+def install_hook(
+    path: Optional[str] = typer.Argument(
+        None, help="Project directory (defaults to current directory)."
+    ),
+) -> None:
+    """Install a git post-commit hook that auto-updates CLAUDE.md."""
+    from ctxcli.hooks import find_ctx_binary, generate_hook_content, make_executable
+
+    target = _resolve_path(path)
+    git_dir = target / ".git"
+
+    if not git_dir.is_dir():
+        console.print("[red]No git repository found. Run git init first.[/red]")
+        raise typer.Exit(1)
+
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(exist_ok=True)
+    hook_path = hooks_dir / "post-commit"
+
+    if hook_path.exists():
+        overwrite = typer.confirm(
+            "post-commit hook already exists. Overwrite?", default=False
+        )
+        if not overwrite:
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit(0)
+
+    ctx_bin = find_ctx_binary()
+    content = generate_hook_content(ctx_bin)
+    hook_path.write_text(content, encoding="utf-8")
+    make_executable(hook_path)
+
+    console.print(
+        "[green]✓ Hook installed — CLAUDE.md will update automatically on commit[/green]"
+    )
+    console.print("[dim]To remove: delete .git/hooks/post-commit[/dim]")
+
+
+@app.command()
+def uninstall_hook(
+    path: Optional[str] = typer.Argument(
+        None, help="Project directory (defaults to current directory)."
+    ),
+) -> None:
+    """Remove the ctxcli post-commit hook."""
+    from ctxcli.hooks import is_ctxcli_hook
+
+    target = _resolve_path(path)
+    hook_path = target / ".git" / "hooks" / "post-commit"
+
+    if not hook_path.exists():
+        console.print("[yellow]No post-commit hook found.[/yellow]")
+        raise typer.Exit(0)
+
+    content = hook_path.read_text(encoding="utf-8")
+
+    if not is_ctxcli_hook(content):
+        console.print(
+            "[yellow]Warning: this hook was not installed by ctxcli.[/yellow]"
+        )
+        remove = typer.confirm("Remove it anyway?", default=False)
+        if not remove:
+            console.print("[yellow]Aborted.[/yellow]")
+            raise typer.Exit(0)
+
+    hook_path.unlink()
+    console.print("[green]✓ Hook removed.[/green]")
+
+
 if __name__ == "__main__":
     app()
