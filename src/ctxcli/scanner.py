@@ -17,6 +17,7 @@ class StackProfile:
     key_dependencies: list[str] = field(default_factory=list)
     project_description: str = ""
     existing_claude_md: Optional[str] = None
+    test_command: str = ""      # exact test command from package.json scripts.test
 
 
 _JS_FRAMEWORK_PRIORITY = [
@@ -76,6 +77,10 @@ class StackScanner:
             if csproj_files:
                 self._scan_csproj(profile, csproj_files[0])
 
+        # Python fallback — no standard config file found but Python signals present
+        if profile.language == "unknown":
+            self._python_fallback(profile)
+
         return profile
 
     # ------------------------------------------------------------------ #
@@ -113,6 +118,32 @@ class StackScanner:
         node_version: str = data.get("engines", {}).get("node", "")
         if node_version:
             profile.key_dependencies.insert(0, f"node:{node_version}")
+
+        # Read actual test command from scripts — don't guess
+        test_script: str = data.get("scripts", {}).get("test", "")
+        if test_script:
+            profile.test_command = test_script
+
+    def _python_fallback(self, profile: StackProfile) -> None:
+        """Detect Python projects that have no requirements.txt or pyproject.toml."""
+        if (self.root / "pytest.ini").exists():
+            profile.language = "Python"
+            profile.package_manager = "pyproject"
+            return
+        if (self.root / "__init__.py").exists():
+            profile.language = "Python"
+            profile.package_manager = "pyproject"
+            return
+        # Check root-level *.py files
+        py_files = list(self.root.glob("*.py"))
+        if not py_files:
+            # Check src/ subdirectory
+            src = self.root / "src"
+            if src.is_dir():
+                py_files = list(src.glob("*.py"))
+        if py_files:
+            profile.language = "Python"
+            profile.package_manager = "pyproject"
 
     def _scan_requirements_txt(self, profile: StackProfile) -> None:
         profile.language = "Python"

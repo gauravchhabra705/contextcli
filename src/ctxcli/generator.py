@@ -61,6 +61,25 @@ _KEY_FILES: dict[str, str] = {
 }
 
 
+# Test framework inferred from a test script string (e.g. "vitest run --coverage")
+_SCRIPT_TO_FRAMEWORK: list[tuple[str, str]] = [
+    ("jest", "jest"),
+    ("vitest", "vitest"),
+    ("bun", "bun"),
+    ("mocha", "mocha"),
+    ("pytest", "pytest"),
+]
+
+
+def _framework_from_script(cmd: str) -> str:
+    """Return a test framework name from a scripts.test command, or 'unknown'."""
+    lower = cmd.lower()
+    for keyword, name in _SCRIPT_TO_FRAMEWORK:
+        if keyword in lower:
+            return name
+    return "unknown"
+
+
 # --- Generator ---------------------------------------------------------------
 
 class ClaudeMdGenerator:
@@ -146,8 +165,15 @@ class ClaudeMdGenerator:
             lines.append(f"**Naming Style:** {c.naming_convention}")
         if c.import_style != "unknown":
             lines.append(f"**Import Style:** {c.import_style}")
-        if c.test_framework != "unknown":
-            lines.append(f"**Test Framework:** {c.test_framework}")
+
+        # Prefer framework inferred from the actual scripts.test command
+        tf = (
+            _framework_from_script(self.stack.test_command)
+            if self.stack.test_command
+            else c.test_framework
+        )
+        if tf != "unknown":
+            lines.append(f"**Test Framework:** {tf}")
 
         if len(lines) == 2:
             return ""
@@ -162,9 +188,14 @@ class ClaudeMdGenerator:
         if install:
             lines.append(f"**Install:** `{install}`")
 
-        test_cmd = _TEST_CMDS.get(c.test_framework, "")
-        if test_cmd:
-            lines.append(f"**Test:** `{test_cmd}`")
+        # Prefer exact command from package.json scripts.test; fall back to table lookup
+        if s.test_command:
+            lines.append(f"**Test:** `{s.test_command}`")
+        else:
+            inferred_fw = c.test_framework
+            test_cmd = _TEST_CMDS.get(inferred_fw, "")
+            if test_cmd:
+                lines.append(f"**Test:** `{test_cmd}`")
 
         dev = _DEV_CMDS.get(s.framework, "") or _DEV_CMDS.get(s.language, "")
         if dev:
@@ -188,6 +219,8 @@ class ClaudeMdGenerator:
             files.append("Dockerfile")
         if c.has_ci:
             files.append(".github/workflows/")
+        if c.has_action_yml:
+            files.append("action.yml")
 
         if not files:
             return ""
